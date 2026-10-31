@@ -25,7 +25,7 @@ class Env {
       _get('PUBLIC_API_BASE_URL', 'http://localhost:8080');
   static Set<String> get corsAllowedOrigins => _get(
         'CORS_ALLOWED_ORIGINS',
-        'http://localhost,http://127.0.0.1',
+        'http://localhost,http://127.0.0.1,https://cambodia-shop-frontend.vercel.app',
       )
           .split(',')
           .map((origin) => origin.trim())
