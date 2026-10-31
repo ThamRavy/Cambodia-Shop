@@ -1,0 +1,1 @@
+Initialize MongoDB before serving routes. In your application bootstrap, call Database.connect() before starting the Dart Frog server.
