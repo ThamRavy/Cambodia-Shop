@@ -17,6 +17,7 @@ if [[ ! -x "${flutter_root}/bin/flutter" ]]; then
 fi
 
 export PATH="${flutter_root}/bin:${PATH}"
+git config --global --add safe.directory "${flutter_root}"
 flutter config --no-analytics
 flutter pub get --verbose
 flutter build web --release --verbose --dart-define=API_BASE_URL=https://ecommerce-backend-man4.onrender.com/api/v1
