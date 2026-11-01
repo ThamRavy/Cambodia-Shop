@@ -63,7 +63,7 @@ Map<String, String>? _corsHeaders(String? origin) {
 
   final isLocalDevelopmentOrigin = uri.scheme == 'http' &&
       const {'localhost', '127.0.0.1', '::1'}.contains(uri.host);
-  if (!isLocalDevelopmentOrigin && !Env.corsAllowedOrigins.contains(origin)) {
+  if (!isLocalDevelopmentOrigin && !Env.isCorsOriginAllowed(origin)) {
     return null;
   }
 

@@ -43,6 +43,12 @@ class Env {
     };
   }
 
+  static bool isCorsOriginAllowed(String origin) =>
+      corsAllowedOrigins.contains(origin) ||
+      RegExp(
+        r'^https://cambodia-shop-frontend-[a-z0-9-]+-rupp3\.vercel\.app$',
+      ).hasMatch(origin);
+
   static String get successUrl =>
       _get('FRONTEND_SUCCESS_URL', 'http://localhost:3000/payment/success');
   static String get cancelUrl =>
