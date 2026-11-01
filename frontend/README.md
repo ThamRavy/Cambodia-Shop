@@ -11,9 +11,9 @@ flutter pub get
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api/v1
 ```
 
-The Android emulator uses `10.0.2.2` to reach the host computer. Use `http://localhost:8080/api/v1` for desktop or web, or your computer's LAN IP for a physical Android device. The default API URL is `http://localhost:8080/api/v1`; override it with the `API_BASE_URL` Dart define when needed. The API allows local web development origins by default. For deployed web clients, configure `CORS_ALLOWED_ORIGINS` on the API with the exact storefront origins.
+The Android emulator uses `10.0.2.2` to reach the host computer. Use `http://localhost:8080/api/v1` for desktop or web, or your computer's LAN IP for a physical Android device. The app defaults to the deployed HTTPS API. Override it with the `API_BASE_URL` Dart define for local development or another deployment. For example, use `http://localhost:8080/api/v1` for local desktop/web, `http://10.0.2.2:8080/api/v1` for the Android emulator, or your computer's LAN IP for a physical Android device. The API allows local web development origins by default. For deployed web clients, configure `CORS_ALLOWED_ORIGINS` on the API with the exact storefront origins.
 
-For production, configure an HTTPS API endpoint and explicitly allow the web app's origin in `CORS_ALLOWED_ORIGINS`.
+For production, build the web app with the deployed HTTPS API endpoint using `--dart-define=API_BASE_URL=https://ecommerce-backend-man4.onrender.com/api/v1` and explicitly allow the web app's exact origin in the backend's `CORS_ALLOWED_ORIGINS`.
 
 After placing an order, the app requests an ABA KHQR checkout and displays the returned QR. Scan it in ABA Mobile, then tap **I've paid — check status**. The app verifies the transaction with the API; it does not treat scanning the QR or a browser redirect as proof of payment. You can also start payment for an existing unpaid order from the Orders tab.
 

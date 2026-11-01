@@ -6,6 +6,28 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('uses the deployed API by default', () async {
+    late http.Request request;
+    final api = ShopApi(
+      client: MockClient((incoming) async {
+        request = incoming;
+        return http.Response(
+          jsonEncode({'error': 'invalid_credentials'}),
+          401,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await expectLater(
+      api.login('customer@example.com', 'password'),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(request.url.origin, 'https://ecommerce-backend-man4.onrender.com');
+    expect(request.url.path, '/api/v1/auth/login');
+  });
+
   test('requests an email verification code during registration', () async {
     late http.Request request;
     final api = ShopApi(

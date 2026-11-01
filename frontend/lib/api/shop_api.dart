@@ -20,7 +20,7 @@ class ShopApi {
     : _client = client ?? http.Client(),
       _baseUrl = const String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://localhost:8080/api/v1',
+        defaultValue: 'https://ecommerce-backend-man4.onrender.com/api/v1',
       ).replaceFirst(RegExp(r'/+$'), '');
 
   final http.Client _client;

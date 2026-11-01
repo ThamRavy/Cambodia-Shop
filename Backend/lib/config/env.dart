@@ -25,14 +25,24 @@ class Env {
       );
   static String get publicApiBaseUrl =>
       _get('PUBLIC_API_BASE_URL', 'http://localhost:8080');
-  static Set<String> get corsAllowedOrigins => _get(
-        'CORS_ALLOWED_ORIGINS',
-        'http://localhost,http://127.0.0.1,https://cambodia-shop-frontend.vercel.app',
-      )
-          .split(',')
-          .map((origin) => origin.trim())
-          .where((origin) => origin.isNotEmpty)
-          .toSet();
+  static Set<String> get corsAllowedOrigins {
+    const defaults = {
+      'http://localhost',
+      'http://127.0.0.1',
+      'https://cambodia-shop-frontend.vercel.app',
+      'https://bodia-shop-frontend.vercel.app',
+    };
+    final configured = _configuredValue('CORS_ALLOWED_ORIGINS');
+    return {
+      ...defaults,
+      if (configured != null)
+        ...configured
+            .split(',')
+            .map((origin) => origin.trim())
+            .where((origin) => origin.isNotEmpty),
+    };
+  }
+
   static String get successUrl =>
       _get('FRONTEND_SUCCESS_URL', 'http://localhost:3000/payment/success');
   static String get cancelUrl =>
