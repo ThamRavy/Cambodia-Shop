@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'status=$?; echo "Build command failed at line ${LINENO} (exit ${status}): ${BASH_COMMAND}"; exit "${status}"' ERR
 
 flutter_version="3.47.2"
 flutter_root="${HOME}/.cache/cambodia-shop/flutter-${flutter_version}"
@@ -17,5 +18,5 @@ fi
 
 export PATH="${flutter_root}/bin:${PATH}"
 flutter config --no-analytics
-flutter pub get
-flutter build web --release --dart-define=API_BASE_URL=https://ecommerce-backend-man4.onrender.com/api/v1
+flutter pub get --verbose
+flutter build web --release --verbose --dart-define=API_BASE_URL=https://ecommerce-backend-man4.onrender.com/api/v1
