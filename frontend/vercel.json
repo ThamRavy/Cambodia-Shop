@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "flutter build web --release --dart-define=API_BASE_URL=https://ecommerce-backend-man4.onrender.com/api/v1",
+  "outputDirectory": "build/web"
+}

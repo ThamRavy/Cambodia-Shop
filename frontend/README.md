@@ -15,6 +15,8 @@ The Android emulator uses `10.0.2.2` to reach the host computer. Use `http://loc
 
 For production, build the web app with the deployed HTTPS API endpoint using `--dart-define=API_BASE_URL=https://ecommerce-backend-man4.onrender.com/api/v1` and explicitly allow the web app's exact origin in the backend's `CORS_ALLOWED_ORIGINS`.
 
+The Vercel project is linked to `frontend/`. Keep its Root Directory set to `frontend`; [`vercel.json`](vercel.json) configures the Flutter web release build and `build/web` output directory. The Vercel build environment must have the Flutter SDK installed.
+
 After placing an order, the app requests an ABA KHQR checkout and displays the returned QR. Scan it in ABA Mobile, then tap **I've paid — check status**. The app verifies the transaction with the API; it does not treat scanning the QR or a browser redirect as proof of payment. You can also start payment for an existing unpaid order from the Orders tab.
 
 Configure valid ABA PayWay sandbox merchant credentials and sandbox endpoints in the API's `.env` before testing payment. Do not put PayWay secrets in the Flutter app. If checkout reports that credentials are missing or unavailable, check the API terminal and PayWay sandbox configuration.
