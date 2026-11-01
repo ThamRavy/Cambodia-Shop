@@ -36,8 +36,8 @@ class AuthService {
     if (!_isValidEmail(normalized)) {
       throw FormatException('A valid email is required');
     }
-    if (password.length < 12) {
-      throw FormatException('Password must be at least 12 characters');
+    if (password.length < 6) {
+      throw FormatException('Password must be at least 6 characters');
     }
     if (name.trim().length < 2) {
       throw FormatException('Name must be at least 2 characters');

@@ -77,7 +77,7 @@ All JSON APIs are under `/api/v1` unless stated otherwise.
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \
  -H 'Content-Type: application/json' \
- -d '{"email":"customer@example.com","password":"replace-with-a-long-passphrase","name":"Shop Customer"}'
+ -d '{"email":"customer@example.com","password":"replace-with-a-passphrase","name":"Shop Customer"}'
 ```
 The API responds with `202 Accepted` after Resend accepts the message. The customer enters the six-digit code from that email in the storefront; the app submits it to the verification endpoint and signs the customer in only after verification:
 ```bash

@@ -1621,8 +1621,8 @@ class _AccountScreenState extends State<AccountScreen> {
                       decoration: const InputDecoration(labelText: 'Password'),
                       obscureText: true,
                       validator: (value) =>
-                          _register && (value?.length ?? 0) < 12
-                          ? 'Use at least 12 characters.'
+                          _register && (value?.length ?? 0) < 6
+                          ? 'Use at least 6 characters.'
                           : (value?.isEmpty ?? true)
                           ? 'Enter your password.'
                           : null,
