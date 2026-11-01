@@ -31,6 +31,7 @@ class Env {
       'http://127.0.0.1',
       'https://cambodia-shop-frontend.vercel.app',
       'https://bodia-shop-frontend.vercel.app',
+      'https://cambodia-shop-frontend-q2o6jxrip-rupp3.vercel.app',
     };
     final configured = _configuredValue('CORS_ALLOWED_ORIGINS');
     return {
