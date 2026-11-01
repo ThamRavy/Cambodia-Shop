@@ -1474,15 +1474,19 @@ class _AccountScreenState extends State<AccountScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _verificationCode = TextEditingController();
   bool _register = false;
+  bool _verificationPending = false;
   bool _sending = false;
   String? _error;
+  String? _notice;
 
   @override
   void dispose() {
     _name.dispose();
     _email.dispose();
     _password.dispose();
+    _verificationCode.dispose();
     super.dispose();
   }
 
@@ -1553,7 +1557,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _register ? 'Join the shop' : 'Welcome back',
+                    _verificationPending
+                        ? 'Verify your email'
+                        : _register
+                        ? 'Join the shop'
+                        : 'Welcome back',
                     style: const TextStyle(
                       color: _ink,
                       fontSize: 24,
@@ -1562,48 +1570,71 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                   const SizedBox(height: 7),
                   Text(
-                    _register
+                    _verificationPending
+                        ? 'Enter the six-digit code we sent to ${_email.text.trim()}.'
+                        : _register
                         ? 'Create an account to place and track orders.'
                         : 'Sign in to place orders and view your history.',
                     style: const TextStyle(color: _muted),
                   ),
                   const SizedBox(height: 21),
-                  if (_register) ...[
+                  if (_verificationPending) ...[
                     TextFormField(
-                      controller: _name,
-                      decoration: const InputDecoration(labelText: 'Name'),
-                      textCapitalization: TextCapitalization.words,
-                      validator: (value) => (value?.trim().length ?? 0) < 2
-                          ? 'Enter at least 2 characters.'
-                          : null,
+                      controller: _verificationCode,
+                      decoration: const InputDecoration(
+                        labelText: 'Verification code',
+                      ),
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      validator: (value) =>
+                          RegExp(r'^\d{6}$').hasMatch(value?.trim() ?? '')
+                          ? null
+                          : 'Enter the six-digit code from your email.',
+                    ),
+                  ] else ...[
+                    if (_register) ...[
+                      TextFormField(
+                        controller: _name,
+                        decoration: const InputDecoration(labelText: 'Name'),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (value) => (value?.trim().length ?? 0) < 2
+                            ? 'Enter at least 2 characters.'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextFormField(
+                      controller: _email,
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        final email = value?.trim() ?? '';
+                        return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                .hasMatch(email)
+                            ? null
+                            : 'Enter a valid email address.';
+                      },
                     ),
                     const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _password,
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      obscureText: true,
+                      validator: (value) =>
+                          _register && (value?.length ?? 0) < 12
+                          ? 'Use at least 12 characters.'
+                          : (value?.isEmpty ?? true)
+                          ? 'Enter your password.'
+                          : null,
+                    ),
                   ],
-                  TextFormField(
-                    controller: _email,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      final email = value?.trim() ?? '';
-                      return email.contains('@') && email.contains('.')
-                          ? null
-                          : 'Enter a valid email address.';
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _password,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    obscureText: true,
-                    validator: (value) => _register && (value?.length ?? 0) < 12
-                        ? 'Use at least 12 characters.'
-                        : (value?.isEmpty ?? true)
-                        ? 'Enter your password.'
-                        : null,
-                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(_error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                  if (_notice != null) ...[
+                    const SizedBox(height: 12),
+                    Text(_notice!, style: const TextStyle(color: _green)),
                   ],
                   const SizedBox(height: 18),
                   SizedBox(
@@ -1621,24 +1652,47 @@ class _AccountScreenState extends State<AccountScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : Text(_register ? 'Create account' : 'Sign in'),
+                            : Text(
+                                _verificationPending
+                                    ? 'Verify email'
+                                    : _register
+                                    ? 'Create account'
+                                    : 'Sign in',
+                              ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   Center(
                     child: TextButton(
-                      onPressed: () => setState(() {
-                        _register = !_register;
-                        _error = null;
-                      }),
+                      onPressed: _verificationPending
+                          ? _resendVerification
+                          : () => setState(() {
+                              _register = !_register;
+                              _error = null;
+                              _notice = null;
+                            }),
                       child: Text(
-                        _register
+                        _verificationPending
+                            ? 'Resend verification email'
+                            : _register
                             ? 'Already have an account? Sign in'
                             : 'New here? Create an account',
                       ),
                     ),
                   ),
+                  if (_verificationPending)
+                    Center(
+                      child: TextButton(
+                        onPressed: () => setState(() {
+                          _verificationPending = false;
+                          _verificationCode.clear();
+                          _error = null;
+                          _notice = null;
+                        }),
+                        child: const Text('Change signup details'),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1653,14 +1707,49 @@ class _AccountScreenState extends State<AccountScreen> {
     setState(() {
       _sending = true;
       _error = null;
+      _notice = null;
     });
     try {
-      await widget.store.authenticate(
-        register: _register,
+      if (_verificationPending) {
+        await widget.store.verifyEmail(
+          email: _email.text.trim(),
+          code: _verificationCode.text.trim(),
+        );
+      } else if (_register) {
+        await widget.store.requestRegistrationCode(
+          name: _name.text.trim(),
+          email: _email.text.trim(),
+          password: _password.text,
+        );
+        if (mounted) setState(() => _verificationPending = true);
+      } else {
+        await widget.store.authenticate(
+          email: _email.text.trim(),
+          password: _password.text,
+        );
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _resendVerification() async {
+    setState(() {
+      _sending = true;
+      _error = null;
+      _notice = null;
+    });
+    try {
+      await widget.store.requestRegistrationCode(
         name: _name.text.trim(),
         email: _email.text.trim(),
         password: _password.text,
       );
+      if (mounted) {
+        setState(() => _notice = 'A new verification code was sent.');
+      }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {

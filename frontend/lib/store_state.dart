@@ -34,19 +34,35 @@ class StoreState extends ChangeNotifier {
     }
   }
 
-  Future<void> authenticate({
-    required bool register,
+  Future<void> requestRegistrationCode({
+    required String name,
     required String email,
     required String password,
-    String name = '',
   }) async {
-    final result = register
-        ? await api.register(name, email, password)
-        : await api.login(email, password);
+    await api.register(name, email, password);
+  }
+
+  Future<void> verifyEmail({
+    required String email,
+    required String code,
+  }) async {
+    final result = await api.verifyEmail(email, code);
+    _setAuthenticatedUser(result);
+  }
+
+  Future<void> authenticate({
+    required String email,
+    required String password,
+  }) async {
+    final result = await api.login(email, password);
+    _setAuthenticatedUser(result);
+  }
+
+  void _setAuthenticatedUser(Map<String, dynamic> result) {
     final user = result['user'] as Map<String, dynamic>;
     token = result['token'] as String;
-    this.email = user['email'] as String?;
-    this.name = user['name'] as String?;
+    email = user['email'] as String?;
+    name = user['name'] as String?;
     notifyListeners();
   }
 

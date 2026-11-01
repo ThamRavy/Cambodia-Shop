@@ -26,6 +26,13 @@ class Database {
     await db.open();
     _db = db;
     await db.collection('users').createIndex(keys: {'email': 1}, unique: true);
+    await db.collection('email_verifications').createIndex(
+      keys: {'email': 1},
+      unique: true,
+    );
+    await db.collection('email_verifications').createIndex(
+      keys: {'expiresAt': 1},
+    );
     await db
         .collection('products')
         .createIndex(keys: {'slug': 1}, unique: true);

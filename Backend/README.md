@@ -42,10 +42,10 @@ dart_frog dev
 The app reads process environment variables first and uses `.env` from the project root as a local-development fallback. In deployment, configure secrets through the process environment or your platform's secret manager. For browser clients, set `CORS_ALLOWED_ORIGINS` to a comma-separated list of exact HTTPS storefront origins. Local HTTP development origins on `localhost`, `127.0.0.1`, and `[::1]` are allowed by default.
 
 ## Render environment variables
-For a Render deployment using MongoDB Atlas, configure `MONGODB_URI`, `MONGODB_DATABASE`, and a strong `JWT_SECRET` in the service's environment settings. Render supplies `PORT`. For PayWay, set `ABA_PAYWAY_MERCHANT_ID` and `ABA_PAYWAY_HMAC_KEY` only to the merchant credentials ABA has confirmed for your account; never substitute an RSA key or public key for the HMAC signing key. The default PayWay URLs use the sandbox. Set `ABA_PAYWAY_BASE_URL` or the explicit purchase/check URLs only to the endpoints provided for your environment. Also set `PUBLIC_API_BASE_URL` to the deployed HTTPS API origin, `FRONTEND_SUCCESS_URL` and `FRONTEND_CANCEL_URL` to your storefront routes, and `CORS_ALLOWED_ORIGINS` to the exact HTTPS storefront origin when browser clients call the API. The `MONGO_ROOT_*` and `SHOP_DB_*` variables are for the included Docker Compose MongoDB service and are not needed for Atlas.
+For a Render deployment using MongoDB Atlas, configure `MONGODB_URI`, `MONGODB_DATABASE`, and a strong `JWT_SECRET` in the service's environment settings. Render supplies `PORT`. For email verification, set `RESEND_API_KEY` and `EMAIL_FROM` in the backend environment. Verify the sender domain/address in Resend before using it; never put the API key in the Flutter app or source control. For PayWay, set `ABA_PAYWAY_MERCHANT_ID` and `ABA_PAYWAY_HMAC_KEY` only to the merchant credentials ABA has confirmed for your account; never substitute an RSA key or public key for the HMAC signing key. The default PayWay URLs use the sandbox. Set `ABA_PAYWAY_BASE_URL` or the explicit purchase/check URLs only to the endpoints provided for your environment. Also set `PUBLIC_API_BASE_URL` to the deployed HTTPS API origin, `FRONTEND_SUCCESS_URL` and `FRONTEND_CANCEL_URL` to your storefront routes, and `CORS_ALLOWED_ORIGINS` to the exact HTTPS storefront origin when browser clients call the API. The `MONGO_ROOT_*` and `SHOP_DB_*` variables are for the included Docker Compose MongoDB service and are not needed for Atlas.
 
 ## Flutter storefront
-The mobile storefront is in `frontend/`. Start the API first, configure ABA PayWay sandbox credentials in the API `.env`, then run the Flutter app from that directory:
+The mobile storefront is in `frontend/`. Start the API first, configure Resend and ABA PayWay sandbox credentials in the API environment, then run the Flutter app from that directory:
 ```bash
 cd frontend
 flutter pub get
@@ -59,7 +59,8 @@ All JSON APIs are under `/api/v1` unless stated otherwise.
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
 | GET | `/health` | No | Liveness check |
-| POST | `/api/v1/auth/register` | No | `{ "email", "password", "name" }` |
+| POST | `/api/v1/auth/register` | No | `{ "email", "password", "name" }`; emails a verification code |
+| POST | `/api/v1/auth/verify_email` | No | `{ "email", "code" }`; verifies email and returns JWT |
 | POST | `/api/v1/auth/login` | No | Returns JWT |
 | GET | `/api/v1/products` | No | Active products; optional `?category=` |
 | GET | `/api/v1/products/:id` | No | Product detail |
@@ -72,12 +73,19 @@ All JSON APIs are under `/api/v1` unless stated otherwise.
 | GET/POST | `/api/v1/payments/return` | PayWay callback/return | Redirect acknowledgement only; not payment confirmation |
 | POST | `/api/v1/addresses/directions` | No | `{ "latitude": 11.55, "longitude": 104.92 }` returns Google Maps directions URL |
 
-### Example: register
+### Example: register and verify email
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \
  -H 'Content-Type: application/json' \
  -d '{"email":"customer@example.com","password":"replace-with-a-long-passphrase","name":"Shop Customer"}'
 ```
+The API responds with `202 Accepted` after Resend accepts the message. The customer enters the six-digit code from that email in the storefront; the app submits it to the verification endpoint and signs the customer in only after verification:
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/verify_email \
+ -H 'Content-Type: application/json' \
+ -d '{"email":"customer@example.com","code":"123456"}'
+```
+Codes expire after 10 minutes, are stored as keyed hashes, and allow up to five verification attempts. A verification email can be requested once per minute for the same address.
 
 ### Example: browse products
 ```bash
@@ -125,7 +133,8 @@ db.users.updateOne({email: "admin@example.com"}, {$set: {role: "admin"}})
 ```
 
 ## Data models (MongoDB documents)
-- `users`: `_id`, `email` (unique, normalized), `name`, `passwordHash`, `role`, `createdAt`
+- `users`: `_id`, `email` (unique, normalized), `name`, `passwordHash`, `role`, `emailVerified`, `createdAt`
+- `email_verifications`: `email` (unique), `name`, `passwordHash`, `codeHash`, `attempts`, `lastSentAt`, `expiresAt` (TTL)
 - `products`: `_id`, `name`, `slug` (unique), `description`, `category`, `imageUrl`, `priceCents` (integer), `currency`, `stock`, `active`, timestamps
 - `orders`: `_id`, `orderNumber` (unique), `userId`, immutable item snapshots, `subtotalCents`, `shippingCents`, `totalCents`, `currency`, `status`, `paymentStatus`, `shippingAddress`, timestamps
 - `payments`: `_id`, `provider`, `tranId` (unique), `orderId`, `userId`, `amountCents`, `currency`, `status`, timestamps, provider verification metadata
@@ -135,7 +144,7 @@ db.users.updateOne({email: "admin@example.com"}, {$set: {role: "admin"}})
 - [ ] Make payment/order reconciliation transactional and idempotent; restore stock for failed/cancelled orders and handle payment timeout.
 - [ ] Wrap stock reservation/order creation in a MongoDB transaction (requires replica set) or a reservation/compensation workflow. Current sample decrements stock before order insert; add rollback on every failure.
 - [ ] Add rate limiting, request size limits, CORS allowlist, TLS, security headers, structured redacted logs, monitoring, backups and restore drills.
-- [ ] Add email verification, password reset, account lockout/abuse controls, pagination, product update/archive, admin audit logs, shipping fees/tax, refunds and fulfillment workflows.
+- [ ] Add password reset, account lockout/abuse controls, pagination, product update/archive, admin audit logs, shipping fees/tax, refunds and fulfillment workflows.
 - [ ] Restrict Google Maps browser key by website referrer and only required APIs. Keep server-side web-service keys separate and private.
 - [ ] Do not store card data. PayWay hosted checkout should collect payment details.
 - [ ] Use HTTPS for all public callbacks; configure production URLs and test sandbox payment methods before launch.

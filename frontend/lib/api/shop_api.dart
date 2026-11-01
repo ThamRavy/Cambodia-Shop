@@ -51,6 +51,10 @@ class ShopApi {
     });
   }
 
+  Future<Map<String, dynamic>> verifyEmail(String email, String code) {
+    return _post('/auth/verify_email', {'email': email, 'code': code});
+  }
+
   Future<Map<String, dynamic>> createOrder({
     required String token,
     required Map<String, int> items,
