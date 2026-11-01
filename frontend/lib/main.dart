@@ -1,11 +1,16 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'api/shop_api.dart';
+import 'firebase_options.dart';
 import 'models/product.dart';
 import 'store_state.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(StorefrontApp(store: StoreState(ShopApi())));
 }
 
@@ -1474,7 +1479,6 @@ class _AccountScreenState extends State<AccountScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final _verificationCode = TextEditingController();
   bool _register = false;
   bool _verificationPending = false;
   bool _sending = false;
@@ -1486,7 +1490,6 @@ class _AccountScreenState extends State<AccountScreen> {
     _name.dispose();
     _email.dispose();
     _password.dispose();
-    _verificationCode.dispose();
     super.dispose();
   }
 
@@ -1571,27 +1574,14 @@ class _AccountScreenState extends State<AccountScreen> {
                   const SizedBox(height: 7),
                   Text(
                     _verificationPending
-                        ? 'Enter the six-digit code we sent to ${_email.text.trim()}.'
+                        ? 'Open the verification link sent to ${_email.text.trim()}, then return here.'
                         : _register
                         ? 'Create an account to place and track orders.'
                         : 'Sign in to place orders and view your history.',
                     style: const TextStyle(color: _muted),
                   ),
                   const SizedBox(height: 21),
-                  if (_verificationPending) ...[
-                    TextFormField(
-                      controller: _verificationCode,
-                      decoration: const InputDecoration(
-                        labelText: 'Verification code',
-                      ),
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      validator: (value) =>
-                          RegExp(r'^\d{6}$').hasMatch(value?.trim() ?? '')
-                          ? null
-                          : 'Enter the six-digit code from your email.',
-                    ),
-                  ] else ...[
+                  if (!_verificationPending) ...[
                     if (_register) ...[
                       TextFormField(
                         controller: _name,
@@ -1654,7 +1644,7 @@ class _AccountScreenState extends State<AccountScreen> {
                               )
                             : Text(
                                 _verificationPending
-                                    ? 'Verify email'
+                                    ? "I've verified my email"
                                     : _register
                                     ? 'Create account'
                                     : 'Sign in',
@@ -1674,7 +1664,7 @@ class _AccountScreenState extends State<AccountScreen> {
                             }),
                       child: Text(
                         _verificationPending
-                            ? 'Resend verification email'
+                            ? 'Resend verification link'
                             : _register
                             ? 'Already have an account? Sign in'
                             : 'New here? Create an account',
@@ -1684,13 +1674,8 @@ class _AccountScreenState extends State<AccountScreen> {
                   if (_verificationPending)
                     Center(
                       child: TextButton(
-                        onPressed: () => setState(() {
-                          _verificationPending = false;
-                          _verificationCode.clear();
-                          _error = null;
-                          _notice = null;
-                        }),
-                        child: const Text('Change signup details'),
+                        onPressed: _sending ? null : _changeAccount,
+                        child: const Text('Use another account'),
                       ),
                     ),
                 ],
@@ -1711,36 +1696,38 @@ class _AccountScreenState extends State<AccountScreen> {
     });
     try {
       if (_verificationPending) {
-        await widget.store.verifyEmail(
-          email: _email.text.trim(),
-          code: _verificationCode.text.trim(),
-        );
+        await widget.store.verifyEmail();
       } else if (_register) {
-        await widget.store.requestRegistrationCode(
+        await widget.store.registerWithEmail(
           name: _name.text.trim(),
           email: _email.text.trim(),
           password: _password.text,
         );
-        if (mounted) setState(() => _verificationPending = true);
+        if (mounted) {
+          setState(() {
+            _verificationPending = true;
+            _notice = 'Verification link sent. Open it in your email, then return here.';
+          });
+        }
       } else {
         await widget.store.authenticate(
           email: _email.text.trim(),
           password: _password.text,
         );
       }
-    } catch (error) {
+    } on EmailVerificationPendingException {
       if (mounted) {
         setState(() {
-          if (error is ApiException &&
-              error.statusCode == 403 &&
-              error.code == 'email_not_verified') {
-            _verificationPending = true;
-            _register = false;
-            _notice = error.message;
-          } else {
-            _error = error.toString();
-          }
+          _verificationPending = true;
+          _register = false;
+          _notice = 'Verify your email using the link in your inbox, then return here.';
         });
+      }
+    } on FirebaseAuthException catch (error) {
+      if (mounted) setState(() => _error = _firebaseErrorMessage(error));
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = error.toString());
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -1754,26 +1741,33 @@ class _AccountScreenState extends State<AccountScreen> {
       _notice = null;
     });
     try {
-      if (_register) {
-        await widget.store.requestRegistrationCode(
-          name: _name.text.trim(),
-          email: _email.text.trim(),
-          password: _password.text,
-        );
-      } else {
-        try {
-          await widget.store.authenticate(
-            email: _email.text.trim(),
-            password: _password.text,
-          );
-        } on ApiException catch (error) {
-          if (error.statusCode != 403 || error.code != 'email_not_verified') {
-            rethrow;
-          }
-        }
-      }
+      await widget.store.resendVerificationEmail();
       if (mounted) {
-        setState(() => _notice = 'A new verification code was sent.');
+        setState(() => _notice = 'A new verification link was sent.');
+      }
+    } on FirebaseAuthException catch (error) {
+      if (mounted) setState(() => _error = _firebaseErrorMessage(error));
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _changeAccount() async {
+    setState(() {
+      _sending = true;
+      _error = null;
+      _notice = null;
+    });
+    try {
+      await widget.store.signOut();
+      if (mounted) {
+        setState(() {
+          _verificationPending = false;
+          _register = false;
+          _password.clear();
+        });
       }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
@@ -1782,6 +1776,22 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 }
+
+String _firebaseErrorMessage(
+  FirebaseAuthException error,
+) => switch (error.code) {
+  'email-already-in-use' =>
+    'An account already exists for this email. Sign in instead.',
+  'invalid-email' => 'Enter a valid email address.',
+  'invalid-credential' ||
+  'wrong-password' ||
+  'user-not-found' => 'The email or password is incorrect.',
+  'weak-password' => 'Use a stronger password with at least 6 characters.',
+  'too-many-requests' => 'Too many attempts. Please wait and try again.',
+  'network-request-failed' =>
+    'Could not reach Firebase. Check your internet connection and try again.',
+  _ => error.message ?? 'Firebase sign-in failed. Please try again.',
+};
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({

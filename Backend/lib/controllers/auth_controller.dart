@@ -2,134 +2,97 @@ import 'dart:convert';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mongo_dart/mongo_dart.dart';
+
 import 'package:ecommerce_api/services/auth_service.dart';
-import 'package:ecommerce_api/services/email_service.dart';
+import 'package:ecommerce_api/services/firebase_identity_service.dart';
 
 class AuthController {
   static Future<Response> login(RequestContext context) async {
     if (context.request.method != HttpMethod.post) {
       return Response(statusCode: 405);
     }
+
+    final Map<String, dynamic> body;
     try {
-      final body =
-          jsonDecode(await context.request.body()) as Map<String, dynamic>;
+      final decoded = jsonDecode(await context.request.body());
+      if (decoded is! Map<String, dynamic>) {
+        return _invalidRequest();
+      }
+      body = decoded;
+    } on FormatException {
+      return _invalidRequest();
+    }
+
+    final idToken = body['idToken'];
+    if (idToken is! String || idToken.isEmpty) return _invalidRequest();
+
+    try {
+      final result =
+          await AuthService(context.read<Db>()).loginWithFirebase(idToken);
+      return Response.json(body: result);
+    } on FirebaseIdentityException catch (error) {
       return Response.json(
-        body: await AuthService(context.read<Db>())
-            .login('${body['email'] ?? ''}', '${body['password'] ?? ''}'),
+        statusCode: error.statusCode,
+        body: {
+          'error': error.statusCode == 401
+              ? 'invalid_firebase_token'
+              : 'firebase_unavailable',
+          'message': error.message,
+        },
       );
-    } on EmailNotVerifiedException {
+    } on FirebaseEmailNotVerifiedException {
       return Response.json(
         statusCode: 403,
         body: {
           'error': 'email_not_verified',
-          'message': 'We sent a verification code to your email address.',
+          'message': 'Verify your email address before signing in.',
         },
-      );
-    } on AuthRateLimitException catch (error) {
-      return Response.json(
-        statusCode: 429,
-        body: {'error': 'rate_limited', 'message': error.message},
-      );
-    } on EmailDeliveryException catch (error) {
-      return Response.json(
-        statusCode: 503,
-        body: {'error': 'email_delivery_failed', 'message': error.message},
-      );
-    } on FormatException {
-      return Response.json(
-        statusCode: 401,
-        body: {
-          'error': 'invalid_credentials',
-          'message': 'Invalid email or password',
-        },
-      );
-    } catch (_) {
-      return Response.json(
-        statusCode: 500,
-        body: {'error': 'internal_server_error'},
-      );
-    }
-  }
-
-  static Future<Response> register(RequestContext context) async {
-    if (context.request.method != HttpMethod.post) {
-      return Response(statusCode: 405);
-    }
-    try {
-      final body =
-          jsonDecode(await context.request.body()) as Map<String, dynamic>;
-      await AuthService(context.read<Db>()).register(
-        '${body['email'] ?? ''}',
-        '${body['password'] ?? ''}',
-        '${body['name'] ?? ''}',
-      );
-      return Response.json(
-        statusCode: 202,
-        body: {
-          'email': '${body['email']}'.trim().toLowerCase(),
-          'message': 'Check your email for a six-digit verification code.',
-        },
-      );
-    } on FormatException catch (error) {
-      return Response.json(
-        statusCode: 400,
-        body: {'error': 'invalid_input', 'message': error.message},
       );
     } on AuthConflictException catch (error) {
       return Response.json(
         statusCode: 409,
-        body: {'error': 'conflict', 'message': error.message},
+        body: {'error': 'account_conflict', 'message': error.message},
       );
-    } on AuthRateLimitException catch (error) {
+    } on FormatException catch (error) {
       return Response.json(
-        statusCode: 429,
-        body: {'error': 'rate_limited', 'message': error.message},
+        statusCode: 400,
+        body: {'error': 'invalid_firebase_account', 'message': error.message},
       );
-    } on EmailDeliveryException catch (error) {
+    } on StateError {
       return Response.json(
         statusCode: 503,
-        body: {'error': 'email_delivery_failed', 'message': error.message},
-      );
-    } catch (_) {
-      return Response.json(
-        statusCode: 500,
-        body: {'error': 'internal_server_error'},
+        body: {
+          'error': 'firebase_not_configured',
+          'message': 'Firebase sign-in is not configured on the API server.',
+        },
       );
     }
   }
 
-  static Future<Response> verifyEmail(RequestContext context) async {
+  static Future<Response> register(RequestContext context) =>
+      _legacyEndpoint(context);
+
+  static Future<Response> verifyEmail(RequestContext context) =>
+      _legacyEndpoint(context);
+
+  static Future<Response> _legacyEndpoint(RequestContext context) async {
     if (context.request.method != HttpMethod.post) {
       return Response(statusCode: 405);
     }
-    try {
-      final body =
-          jsonDecode(await context.request.body()) as Map<String, dynamic>;
-      final result = await AuthService(context.read<Db>()).verifyEmail(
-        '${body['email'] ?? ''}',
-        '${body['code'] ?? ''}',
-      );
-      return Response.json(body: result);
-    } on FormatException catch (error) {
-      return Response.json(
-        statusCode: 400,
-        body: {'error': 'invalid_input', 'message': error.message},
-      );
-    } on AuthConflictException catch (error) {
-      return Response.json(
-        statusCode: 409,
-        body: {'error': 'conflict', 'message': error.message},
-      );
-    } on AuthRateLimitException catch (error) {
-      return Response.json(
-        statusCode: 429,
-        body: {'error': 'rate_limited', 'message': error.message},
-      );
-    } catch (_) {
-      return Response.json(
-        statusCode: 500,
-        body: {'error': 'internal_server_error'},
-      );
-    }
+    return Response.json(
+      statusCode: 410,
+      body: {
+        'error': 'auth_provider_migrated',
+        'message': 'Use Firebase email/password sign-in in the storefront.',
+      },
+    );
   }
+
+  static Response _invalidRequest() => Response.json(
+        statusCode: 400,
+        body: {
+          'error': 'invalid_request',
+          'message': 'A Firebase ID token is required.',
+        },
+      );
 }

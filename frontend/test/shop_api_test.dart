@@ -12,7 +12,7 @@ void main() {
       client: MockClient((incoming) async {
         request = incoming;
         return http.Response(
-          jsonEncode({'error': 'invalid_credentials'}),
+          jsonEncode({'error': 'invalid_firebase_token'}),
           401,
           headers: {'content-type': 'application/json'},
         );
@@ -20,7 +20,7 @@ void main() {
     );
 
     await expectLater(
-      api.login('customer@example.com', 'password'),
+      api.exchangeFirebaseToken('firebase-id-token'),
       throwsA(isA<ApiException>()),
     );
 
@@ -28,38 +28,7 @@ void main() {
     expect(request.url.path, '/api/v1/auth/login');
   });
 
-  test('requests an email verification code during registration', () async {
-    late http.Request request;
-    final api = ShopApi(
-      client: MockClient((incoming) async {
-        request = incoming;
-        return http.Response(
-          jsonEncode({
-            'email': 'customer@example.com',
-            'message': 'Check your email.',
-          }),
-          202,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
-    );
-
-    final result = await api.register(
-      'Shop Customer',
-      'customer@example.com',
-      'a-long-passphrase',
-    );
-
-    expect(request.url.path, '/api/v1/auth/register');
-    expect(jsonDecode(request.body), {
-      'name': 'Shop Customer',
-      'email': 'customer@example.com',
-      'password': 'a-long-passphrase',
-    });
-    expect(result['email'], 'customer@example.com');
-  });
-
-  test('verifies an email code and returns the signed-in customer', () async {
+  test('exchanges a Firebase ID token for a shop API session', () async {
     late http.Request request;
     final api = ShopApi(
       client: MockClient((incoming) async {
@@ -79,23 +48,20 @@ void main() {
       }),
     );
 
-    final result = await api.verifyEmail('customer@example.com', '012345');
+    final result = await api.exchangeFirebaseToken('firebase-id-token');
 
-    expect(request.url.path, '/api/v1/auth/verify_email');
-    expect(jsonDecode(request.body), {
-      'email': 'customer@example.com',
-      'code': '012345',
-    });
+    expect(request.url.path, '/api/v1/auth/login');
+    expect(jsonDecode(request.body), {'idToken': 'firebase-id-token'});
     expect(result['token'], 'customer-token');
   });
 
-  test('preserves the email verification-required login response', () async {
+  test('preserves Firebase verification errors from the API', () async {
     final api = ShopApi(
       client: MockClient(
         (_) async => http.Response(
           jsonEncode({
             'error': 'email_not_verified',
-            'message': 'We sent a verification code to your email address.',
+            'message': 'Verify your email address before signing in.',
           }),
           403,
           headers: {'content-type': 'application/json'},
@@ -104,7 +70,7 @@ void main() {
     );
 
     await expectLater(
-      api.login('customer@example.com', 'correct-password'),
+      api.exchangeFirebaseToken('unverified-firebase-id-token'),
       throwsA(
         isA<ApiException>()
             .having((error) => error.statusCode, 'statusCode', 403)

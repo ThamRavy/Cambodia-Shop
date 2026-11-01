@@ -37,24 +37,8 @@ class ShopApi {
         .toList();
   }
 
-  Future<Map<String, dynamic>> login(String email, String password) {
-    return _post('/auth/login', {'email': email, 'password': password});
-  }
-
-  Future<Map<String, dynamic>> register(
-    String name,
-    String email,
-    String password,
-  ) {
-    return _post('/auth/register', {
-      'name': name,
-      'email': email,
-      'password': password,
-    });
-  }
-
-  Future<Map<String, dynamic>> verifyEmail(String email, String code) {
-    return _post('/auth/verify_email', {'email': email, 'code': code});
+  Future<Map<String, dynamic>> exchangeFirebaseToken(String idToken) {
+    return _post('/auth/login', {'idToken': idToken});
   }
 
   Future<Map<String, dynamic>> createOrder({

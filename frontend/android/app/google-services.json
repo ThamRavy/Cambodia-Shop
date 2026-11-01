@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "804895048690",
+    "project_id": "cambodia-shop-e1525",
+    "storage_bucket": "cambodia-shop-e1525.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:804895048690:android:a3953a8b24bdab537be16b",
+        "android_client_info": {
+          "package_name": "com.ravycambodiashop"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "804895048690-t0hdp5n8uqm4jrjv9puiqhk8tedi7s2v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAsYGPlnhFyGcIYGChE30JWJtGU4Ku0B6A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "804895048690-t0hdp5n8uqm4jrjv9puiqhk8tedi7s2v.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "804895048690-cfcl5t641bobptjjbl7163lg047jesik.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ravy.cambodiaShop"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

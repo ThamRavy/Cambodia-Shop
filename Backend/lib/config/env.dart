@@ -6,8 +6,7 @@ class Env {
   static String get databaseName => _get('MONGODB_DATABASE', 'ecommerce_api');
   static String get jwtSecret => _get('JWT_SECRET');
   static String get jwtIssuer => _get('JWT_ISSUER', 'ecommerce-api');
-  static String get resendApiKey => _get('RESEND_API_KEY');
-  static String get emailFrom => _get('EMAIL_FROM');
+  static String get firebaseWebApiKey => _get('FIREBASE_WEB_API_KEY');
   static String get abaMerchantId => _get('ABA_PAYWAY_MERCHANT_ID');
   static String get abaHmacKey =>
       _getFirst(['ABA_PAYWAY_HMAC_KEY', 'ABA_PAYWAY_API_KEY']);

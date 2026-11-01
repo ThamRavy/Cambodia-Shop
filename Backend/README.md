@@ -42,10 +42,12 @@ dart_frog dev
 The app reads process environment variables first and uses `.env` from the project root as a local-development fallback. In deployment, configure secrets through the process environment or your platform's secret manager. For browser clients, set `CORS_ALLOWED_ORIGINS` to a comma-separated list of exact HTTPS storefront origins. Local HTTP development origins on `localhost`, `127.0.0.1`, and `[::1]` are allowed by default.
 
 ## Render environment variables
-For a Render deployment using MongoDB Atlas, configure `MONGODB_URI`, `MONGODB_DATABASE`, and a strong `JWT_SECRET` in the service's environment settings. Render supplies `PORT`. For email verification, set `RESEND_API_KEY` and `EMAIL_FROM` in the backend environment. Verify the sender domain/address in Resend before using it; never put the API key in the Flutter app or source control. For PayWay, set `ABA_PAYWAY_MERCHANT_ID` and `ABA_PAYWAY_HMAC_KEY` only to the merchant credentials ABA has confirmed for your account; never substitute an RSA key or public key for the HMAC signing key. The default PayWay URLs use the sandbox. Set `ABA_PAYWAY_BASE_URL` or the explicit purchase/check URLs only to the endpoints provided for your environment. Also set `PUBLIC_API_BASE_URL` to the deployed HTTPS API origin, `FRONTEND_SUCCESS_URL` and `FRONTEND_CANCEL_URL` to your storefront routes, and `CORS_ALLOWED_ORIGINS` to the exact HTTPS storefront origin when browser clients call the API. The `MONGO_ROOT_*` and `SHOP_DB_*` variables are for the included Docker Compose MongoDB service and are not needed for Atlas.
+For a Render deployment using MongoDB Atlas, configure `MONGODB_URI`, `MONGODB_DATABASE`, a strong `JWT_SECRET`, and `FIREBASE_WEB_API_KEY` in the service's environment settings. The Firebase key is the web app's Firebase API key from the generated `frontend/lib/firebase_options.dart`; it is public client configuration, not an Admin SDK credential. The API uses it to ask Firebase Identity Toolkit to validate each ID token. If restricting the key, allow the Identity Toolkit API and do not use an HTTP-referrer-only restriction, since the API server's request has no browser referrer. Never put a Firebase service-account private key in the Flutter app or source control. Render supplies `PORT`. For PayWay, set `ABA_PAYWAY_MERCHANT_ID` and `ABA_PAYWAY_HMAC_KEY` only to the merchant credentials ABA has confirmed for your account; never substitute an RSA key or public key for the HMAC signing key. The default PayWay URLs use the sandbox. Set `ABA_PAYWAY_BASE_URL` or the explicit purchase/check URLs only to the endpoints provided for your environment. Also set `PUBLIC_API_BASE_URL` to the deployed HTTPS API origin, `FRONTEND_SUCCESS_URL` and `FRONTEND_CANCEL_URL` to your storefront routes, and `CORS_ALLOWED_ORIGINS` to the exact HTTPS storefront origin when browser clients call the API. The `MONGO_ROOT_*` and `SHOP_DB_*` variables are for the included Docker Compose MongoDB service and are not needed for Atlas.
+
+In Firebase Console, enable **Authentication → Sign-in method → Email/Password** and add the deployed storefront hostname under **Authentication → Settings → Authorized domains**. Firebase sends and verifies the email link, so a custom email domain or Resend account is not required.
 
 ## Flutter storefront
-The mobile storefront is in `frontend/`. Start the API first, configure Resend and ABA PayWay sandbox credentials in the API environment, then run the Flutter app from that directory:
+The storefront is in `frontend/`. Start the API first, configure Firebase and ABA PayWay sandbox credentials, then run the Flutter app from that directory:
 ```bash
 cd frontend
 flutter pub get
@@ -59,9 +61,9 @@ All JSON APIs are under `/api/v1` unless stated otherwise.
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
 | GET | `/health` | No | Liveness check |
-| POST | `/api/v1/auth/register` | No | `{ "email", "password", "name" }` (password: 6+ characters); emails a verification code |
-| POST | `/api/v1/auth/verify_email` | No | `{ "email", "code" }`; verifies email and returns JWT |
-| POST | `/api/v1/auth/login` | No | Returns JWT only for a verified email; legacy unverified accounts receive a verification code |
+| POST | `/api/v1/auth/login` | No | `{ "idToken" }`; validates a Firebase ID token, requires a verified email, and returns a shop JWT |
+| POST | `/api/v1/auth/register` | No | Retired; registration is handled by Firebase Authentication in the storefront |
+| POST | `/api/v1/auth/verify_email` | No | Retired; email verification is handled by Firebase Authentication |
 | GET | `/api/v1/products` | No | Active products; optional `?category=` |
 | GET | `/api/v1/products/:id` | No | Product detail |
 | POST | `/api/v1/products` | Admin JWT | Create product (`name`, `slug`, `priceCents`, `stock`, etc.) |
@@ -73,19 +75,13 @@ All JSON APIs are under `/api/v1` unless stated otherwise.
 | GET/POST | `/api/v1/payments/return` | PayWay callback/return | Redirect acknowledgement only; not payment confirmation |
 | POST | `/api/v1/addresses/directions` | No | `{ "latitude": 11.55, "longitude": 104.92 }` returns Google Maps directions URL |
 
-### Example: register and verify email
+### Firebase sign-in exchange
 ```bash
-curl -X POST http://localhost:8080/api/v1/auth/register \
+curl -X POST http://localhost:8080/api/v1/auth/login \
  -H 'Content-Type: application/json' \
- -d '{"email":"customer@example.com","password":"replace-with-a-passphrase","name":"Shop Customer"}'
+ -d '{"idToken":"FIREBASE_ID_TOKEN"}'
 ```
-The API responds with `202 Accepted` after Resend accepts the message. That response alone does not create an account or confirm that the address can receive email. The customer enters the six-digit code delivered to that mailbox in the storefront; the app submits it to the verification endpoint and creates/signs in the account only after verification. Existing accounts created before email verification are also asked to verify their address on their next login:
-```bash
-curl -X POST http://localhost:8080/api/v1/auth/verify_email \
- -H 'Content-Type: application/json' \
- -d '{"email":"customer@example.com","code":"123456"}'
-```
-Codes expire after 10 minutes, are stored as keyed hashes, and allow up to five verification attempts. A verification email can be requested once per minute for the same address.
+The storefront creates/signs in users with Firebase, sends Firebase's email verification link, and exchanges the verified Firebase ID token with this endpoint. The API validates the token with Firebase before issuing its own six-hour JWT, which remains the credential for order and payment endpoints. Existing MongoDB users are linked to a verified Firebase account with the same normalized email so existing order ownership and roles are retained.
 
 ### Example: browse products
 ```bash
@@ -133,8 +129,7 @@ db.users.updateOne({email: "admin@example.com"}, {$set: {role: "admin"}})
 ```
 
 ## Data models (MongoDB documents)
-- `users`: `_id`, `email` (unique, normalized), `name`, `passwordHash`, `role`, `emailVerified`, `createdAt`
-- `email_verifications`: `email` (unique), `name`, `passwordHash`, `codeHash`, `attempts`, `lastSentAt`, `expiresAt` (TTL)
+- `users`: `_id`, `email` (unique, normalized), `name`, `firebaseUid`, `role`, `emailVerified`, `emailVerifiedAt`, timestamps
 - `products`: `_id`, `name`, `slug` (unique), `description`, `category`, `imageUrl`, `priceCents` (integer), `currency`, `stock`, `active`, timestamps
 - `orders`: `_id`, `orderNumber` (unique), `userId`, immutable item snapshots, `subtotalCents`, `shippingCents`, `totalCents`, `currency`, `status`, `paymentStatus`, `shippingAddress`, timestamps
 - `payments`: `_id`, `provider`, `tranId` (unique), `orderId`, `userId`, `amountCents`, `currency`, `status`, timestamps, provider verification metadata

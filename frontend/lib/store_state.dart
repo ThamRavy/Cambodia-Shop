@@ -1,12 +1,19 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'api/shop_api.dart';
 import 'models/product.dart';
 
+class EmailVerificationPendingException implements Exception {
+  const EmailVerificationPendingException();
+}
+
 class StoreState extends ChangeNotifier {
-  StoreState(this.api);
+  StoreState(this.api, {this._firebaseAuth});
 
   final ShopApi api;
+  final FirebaseAuth? _firebaseAuth;
+  FirebaseAuth get _auth => _firebaseAuth ?? FirebaseAuth.instance;
   final List<Product> products = [];
   final Map<String, int> cart = {};
   String? token;
@@ -34,27 +41,68 @@ class StoreState extends ChangeNotifier {
     }
   }
 
-  Future<void> requestRegistrationCode({
+  Future<void> registerWithEmail({
     required String name,
     required String email,
     required String password,
   }) async {
-    await api.register(name, email, password);
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final user = credential.user;
+    if (user == null) {
+      throw StateError('Firebase did not return the newly created account.');
+    }
+    await user.updateDisplayName(name.trim());
+    await user.sendEmailVerification();
   }
 
-  Future<void> verifyEmail({
-    required String email,
-    required String code,
-  }) async {
-    final result = await api.verifyEmail(email, code);
-    _setAuthenticatedUser(result);
+  Future<void> resendVerificationEmail() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw StateError('Sign in again before requesting a verification link.');
+    }
+    await user.sendEmailVerification();
+  }
+
+  Future<void> verifyEmail() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw StateError('Sign in again after opening your verification email.');
+    }
+    await user.reload();
+    final refreshedUser = _auth.currentUser;
+    if (refreshedUser == null || !refreshedUser.emailVerified) {
+      throw const EmailVerificationPendingException();
+    }
+    await _exchangeFirebaseToken(refreshedUser);
   }
 
   Future<void> authenticate({
     required String email,
     required String password,
   }) async {
-    final result = await api.login(email, password);
+    final credential = await _auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final user = credential.user;
+    if (user == null) {
+      throw StateError('Firebase did not return the signed-in account.');
+    }
+    if (!user.emailVerified) {
+      throw const EmailVerificationPendingException();
+    }
+    await _exchangeFirebaseToken(user);
+  }
+
+  Future<void> _exchangeFirebaseToken(User user) async {
+    final idToken = await user.getIdToken(true);
+    if (idToken == null || idToken.isEmpty) {
+      throw StateError('Firebase did not return a valid sign-in token.');
+    }
+    final result = await api.exchangeFirebaseToken(idToken);
     _setAuthenticatedUser(result);
   }
 
@@ -66,7 +114,8 @@ class StoreState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void signOut() {
+  Future<void> signOut() async {
+    await _auth.signOut();
     token = null;
     email = null;
     name = null;
