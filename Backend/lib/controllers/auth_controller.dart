@@ -22,8 +22,18 @@ class AuthController {
         statusCode: 403,
         body: {
           'error': 'email_not_verified',
-          'message': 'Verify your email address before signing in.',
+          'message': 'We sent a verification code to your email address.',
         },
+      );
+    } on AuthRateLimitException catch (error) {
+      return Response.json(
+        statusCode: 429,
+        body: {'error': 'rate_limited', 'message': error.message},
+      );
+    } on EmailDeliveryException catch (error) {
+      return Response.json(
+        statusCode: 503,
+        body: {'error': 'email_delivery_failed', 'message': error.message},
       );
     } on FormatException {
       return Response.json(

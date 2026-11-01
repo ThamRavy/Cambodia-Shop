@@ -59,9 +59,9 @@ All JSON APIs are under `/api/v1` unless stated otherwise.
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
 | GET | `/health` | No | Liveness check |
-| POST | `/api/v1/auth/register` | No | `{ "email", "password", "name" }`; emails a verification code |
+| POST | `/api/v1/auth/register` | No | `{ "email", "password", "name" }` (password: 6+ characters); emails a verification code |
 | POST | `/api/v1/auth/verify_email` | No | `{ "email", "code" }`; verifies email and returns JWT |
-| POST | `/api/v1/auth/login` | No | Returns JWT |
+| POST | `/api/v1/auth/login` | No | Returns JWT only for a verified email; legacy unverified accounts receive a verification code |
 | GET | `/api/v1/products` | No | Active products; optional `?category=` |
 | GET | `/api/v1/products/:id` | No | Product detail |
 | POST | `/api/v1/products` | Admin JWT | Create product (`name`, `slug`, `priceCents`, `stock`, etc.) |
@@ -79,7 +79,7 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
  -H 'Content-Type: application/json' \
  -d '{"email":"customer@example.com","password":"replace-with-a-passphrase","name":"Shop Customer"}'
 ```
-The API responds with `202 Accepted` after Resend accepts the message. The customer enters the six-digit code from that email in the storefront; the app submits it to the verification endpoint and signs the customer in only after verification:
+The API responds with `202 Accepted` after Resend accepts the message. That response alone does not create an account or confirm that the address can receive email. The customer enters the six-digit code delivered to that mailbox in the storefront; the app submits it to the verification endpoint and creates/signs in the account only after verification. Existing accounts created before email verification are also asked to verify their address on their next login:
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/verify_email \
  -H 'Content-Type: application/json' \

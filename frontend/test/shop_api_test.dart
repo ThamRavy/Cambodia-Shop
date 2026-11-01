@@ -67,6 +67,30 @@ void main() {
     expect(result['token'], 'customer-token');
   });
 
+  test('preserves the email verification-required login response', () async {
+    final api = ShopApi(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'error': 'email_not_verified',
+            'message': 'We sent a verification code to your email address.',
+          }),
+          403,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    await expectLater(
+      api.login('customer@example.com', 'correct-password'),
+      throwsA(
+        isA<ApiException>()
+            .having((error) => error.statusCode, 'statusCode', 403)
+            .having((error) => error.code, 'code', 'email_not_verified'),
+      ),
+    );
+  });
+
   test('creates an ABA KHQR checkout for the selected order', () async {
     late http.Request request;
     final api = ShopApi(

@@ -1729,7 +1729,19 @@ class _AccountScreenState extends State<AccountScreen> {
         );
       }
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() {
+          if (error is ApiException &&
+              error.statusCode == 403 &&
+              error.code == 'email_not_verified') {
+            _verificationPending = true;
+            _register = false;
+            _notice = error.message;
+          } else {
+            _error = error.toString();
+          }
+        });
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -1742,11 +1754,24 @@ class _AccountScreenState extends State<AccountScreen> {
       _notice = null;
     });
     try {
-      await widget.store.requestRegistrationCode(
-        name: _name.text.trim(),
-        email: _email.text.trim(),
-        password: _password.text,
-      );
+      if (_register) {
+        await widget.store.requestRegistrationCode(
+          name: _name.text.trim(),
+          email: _email.text.trim(),
+          password: _password.text,
+        );
+      } else {
+        try {
+          await widget.store.authenticate(
+            email: _email.text.trim(),
+            password: _password.text,
+          );
+        } on ApiException catch (error) {
+          if (error.statusCode != 403 || error.code != 'email_not_verified') {
+            rethrow;
+          }
+        }
+      }
       if (mounted) {
         setState(() => _notice = 'A new verification code was sent.');
       }

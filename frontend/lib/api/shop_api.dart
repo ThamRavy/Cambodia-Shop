@@ -5,9 +5,11 @@ import 'package:http/http.dart' as http;
 import '../models/product.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message);
+  const ApiException(this.message, {this.statusCode, this.code});
 
   final String message;
+  final int? statusCode;
+  final String? code;
 
   @override
   String toString() => message;
@@ -142,6 +144,10 @@ class ShopApi {
           : null;
       throw ApiException(
         message?.toString() ?? 'Request failed (${response.statusCode}).',
+        statusCode: response.statusCode,
+        code: decoded is Map<String, dynamic> && decoded['error'] is String
+            ? decoded['error'] as String
+            : null,
       );
     }
     return decoded;

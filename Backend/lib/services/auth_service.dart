@@ -47,34 +47,11 @@ class AuthService {
       throw const AuthConflictException('Email is already registered.');
     }
 
-    final verifications = db.collection('email_verifications');
-    final existing = await verifications.findOne({'email': normalized});
-    final now = DateTime.now().toUtc();
-    final lastSentAt = existing?['lastSentAt'];
-    if (lastSentAt is DateTime && now.difference(lastSentAt).inSeconds < 60) {
-      throw const AuthRateLimitException(
-        'A verification email was just sent. Please wait a minute before trying again.',
-      );
-    }
-
-    final code = _generateVerificationCode();
-    final codeHash = _verificationHash(normalized, code);
-    await verifications.updateOne(
-      {'email': normalized},
-      {
-        r'$set': {
-          'email': normalized,
-          'name': name.trim(),
-          'passwordHash': BCrypt.hashpw(password, BCrypt.gensalt()),
-          'codeHash': codeHash,
-          'attempts': 0,
-          'lastSentAt': now,
-          'expiresAt': now.add(const Duration(minutes: 10)),
-        },
-      },
-      upsert: true,
+    await _sendVerificationCode(
+      normalized,
+      name: name.trim(),
+      passwordHash: BCrypt.hashpw(password, BCrypt.gensalt()),
     );
-    await emailService.sendVerificationCode(normalized, code);
   }
 
   Future<Map<String, dynamic>> verifyEmail(String email, String code) async {
@@ -140,21 +117,55 @@ class AuthService {
     }
 
     final users = db.collection('users');
-    if (await users.findOne({'email': normalized}) != null) {
-      await verifications.deleteOne({'email': normalized});
-      throw const AuthConflictException('Email is already registered.');
+    final existingUserId = pending['userId'];
+    late final ObjectId id;
+    late final String userName;
+    late final String role;
+    if (existingUserId is ObjectId) {
+      id = existingUserId;
+      userName = pending['name'] as String;
+      final result = await users.updateOne(
+        {
+          '_id': id,
+          'email': normalized,
+          'emailVerified': {r'$ne': true},
+        },
+        {
+          r'$set': {
+            'emailVerified': true,
+            'emailVerifiedAt': now,
+          },
+        },
+      );
+      if (result.nModified != 1) {
+        throw const AuthConflictException(
+          'This account changed while being verified. Sign in again.',
+        );
+      }
+      final user = await users.findOne({'_id': id});
+      if (user == null) {
+        throw StateError('Verified user disappeared during verification');
+      }
+      role = (user['role'] ?? 'customer') as String;
+    } else {
+      if (await users.findOne({'email': normalized}) != null) {
+        await verifications.deleteOne({'email': normalized});
+        throw const AuthConflictException('Email is already registered.');
+      }
+      id = ObjectId();
+      userName = pending['name'] as String;
+      role = 'customer';
+      await users.insertOne({
+        '_id': id,
+        'email': normalized,
+        'name': userName,
+        'passwordHash': pending['passwordHash'],
+        'role': role,
+        'emailVerified': true,
+        'emailVerifiedAt': now,
+        'createdAt': now,
+      });
     }
-    final id = ObjectId();
-    final userName = pending['name'] as String;
-    await users.insertOne({
-      '_id': id,
-      'email': normalized,
-      'name': userName,
-      'passwordHash': pending['passwordHash'],
-      'role': 'customer',
-      'emailVerified': true,
-      'createdAt': now,
-    });
     await verifications
         .deleteOne({'email': normalized, 'codeHash': expectedHash});
     return {
@@ -162,9 +173,9 @@ class AuthService {
         'id': id.oid,
         'email': normalized,
         'name': userName,
-        'role': 'customer',
+        'role': role,
       },
-      'token': _token(id.oid, normalized, 'customer'),
+      'token': _token(id.oid, normalized, role),
     };
   }
 
@@ -174,12 +185,18 @@ class AuthService {
       throw FormatException('Invalid email or password');
     }
     final user = await db.collection('users').findOne({'email': normalized});
-    if (user != null && user['emailVerified'] == false) {
-      throw const EmailNotVerifiedException();
-    }
     if (user == null ||
         !BCrypt.checkpw(password, user['passwordHash'] as String)) {
       throw FormatException('Invalid email or password');
+    }
+    if (user['emailVerified'] != true) {
+      await _sendVerificationCode(
+        normalized,
+        name: '${user['name'] ?? 'Customer'}',
+        passwordHash: user['passwordHash'] as String,
+        userId: user['_id'] as ObjectId,
+      );
+      throw const EmailNotVerifiedException();
     }
     final id = (user['_id'] as ObjectId).oid;
     return {
@@ -205,6 +222,44 @@ class AuthService {
         sha256,
         utf8.encode(Env.jwtSecret),
       ).convert(utf8.encode('$email:$code')).toString();
+
+  Future<void> _sendVerificationCode(
+    String email, {
+    required String name,
+    required String passwordHash,
+    ObjectId? userId,
+  }) async {
+    final verifications = db.collection('email_verifications');
+    final existing = await verifications.findOne({'email': email});
+    final now = DateTime.now().toUtc();
+    final lastSentAt = existing?['lastSentAt'];
+    if (lastSentAt is DateTime && now.difference(lastSentAt).inSeconds < 60) {
+      throw const AuthRateLimitException(
+        'A verification email was just sent. Please wait a minute before trying again.',
+      );
+    }
+
+    final code = _generateVerificationCode();
+    final update = <String, dynamic>{
+      'email': email,
+      'name': name,
+      'passwordHash': passwordHash,
+      'codeHash': _verificationHash(email, code),
+      'attempts': 0,
+      'lastSentAt': now,
+      'expiresAt': now.add(const Duration(minutes: 10)),
+    };
+    if (userId != null) update['userId'] = userId;
+    await verifications.updateOne(
+      {'email': email},
+      {
+        r'$set': update,
+        if (userId == null) r'$unset': {'userId': ''},
+      },
+      upsert: true,
+    );
+    await emailService.sendVerificationCode(email, code);
+  }
 
   bool _constantTimeBytesEquality(List<int> a, List<int> b) {
     if (a.length != b.length) return false;
